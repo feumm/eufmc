@@ -146,18 +146,19 @@ app.post("/api/order", async (req, res) => {
 
     const color = capeAccent ? parseInt(capeAccent.replace("#", ""), 16) : 0x5865f2;
 
+    const LTC_ADDRESS = "ltc1qw7t79qc646uxzxq8xnrw46g4mj7d2hfu87cxxj";
+
     const embed = {
       title: `${capeName} Cape`,
-      description: `A new purchase request has been opened. Our team will reach out shortly to complete the transaction.`,
+      description: `A new purchase request has been opened. Send payment to the Litecoin address below and our team will deliver your cape within 24 hours.`,
       color,
       fields: [
-        { name: "🎭  Cape",     value: `**${capeName}**`,                          inline: true },
+        { name: "🎭  Cape",     value: `**${capeName}**`,                           inline: true },
         { name: "💰  Price",    value: `**$${Number(price).toLocaleString()} USD**`, inline: true },
-        { name: "👤  Customer", value: `<@${userId}>`,                              inline: true },
-        { name: "📋  Status",   value: "⏳  Awaiting payment",                      inline: false },
+        { name: "👤  Customer", value: `<@${userId}>`,                               inline: true },
+        { name: "🪙  Litecoin (LTC) Address", value: `\`\`\`${LTC_ADDRESS}\`\`\``,  inline: false },
       ],
       thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
-      image: capeImageUrl ? { url: capeImageUrl } : undefined,
       footer: {
         text: "€UFMC Cape Shop  •  Not affiliated with Mojang AB or Microsoft",
         icon_url: `${base}/logo.png`,
@@ -165,9 +166,7 @@ app.post("/api/order", async (req, res) => {
       timestamp: new Date().toISOString(),
     };
 
-    // Remove undefined keys so Discord doesn't reject them
     if (!embed.thumbnail) delete embed.thumbnail;
-    if (!embed.image) delete embed.image;
 
     await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
       method: "POST", headers: botHeaders,
