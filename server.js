@@ -64,9 +64,9 @@ app.get("/", (req, res) => {
     );
   } else {
     html = injectOg(html, base,
-      "€UFMC | Minecraft Capes",
-      "Premium Minecraft capes at unbeatable prices. Delivered within 24 hours — simple, secure, and seamless.",
-      "/logo.png"
+      "eufmc | Minecraft Capes",
+      "Premium Minecraft capes at unbeatable prices, delivered within 24 hours — simple, secure and seamless.",
+      "/opengraph.png"
     );
   }
 
