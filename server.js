@@ -19,72 +19,67 @@ const CATEGORY_ID = cleanEnvVar(process.env.DISCORD_CATEGORY_ID);
 
 const hasDiscordConfig = !!(BOT_TOKEN && GUILD_ID);
 if (!hasDiscordConfig) {
-  console.warn("WARNING: DISCORD_BOT_TOKEN and DISCORD_GUILD_ID are not set.");
-  console.warn("The shop's Discord integration will run in simulated preview mode.");
+  console.warn("\n⚠️ WARNING: DISCORD_BOT_TOKEN or DISCORD_GUILD_ID is not set in the environment.");
+  console.warn("The server will run in PREVIEW MODE. Simulated orders will be logged to the console.\n");
 }
 
+// Global Headers for Discord API
 const DISCORD_API = "https://discord.com/api/v10";
-const botHeaders = { Authorization: `Bot ${BOT_TOKEN || ""}`, "Content-Type": "application/json" };
-
-const CAPES = [
-  { id: 1, name: "Minecraft Experience", accent: "#4c1d95", price: 79 },
-  { id: 2, name: "Moonlight Trial",      accent: "#3b82f6", price: 359 },
-  { id: 3, name: "Crafter",              accent: "#d97706", price: 1500 },
-  { id: 4, name: "Follower's",           accent: "#16a34a", price: 865 },
-  { id: 5, name: "Purple Heart",         accent: "#a855f7", price: 20 },
-  { id: 6, name: "Menace",              accent: "#ef4444", price: 10 },
-];
-
-const HTML_PATH = path.join(__dirname, "index.html");
-let baseHtml = null;
-function getHtml() {
-  if (!baseHtml) baseHtml = fs.readFileSync(HTML_PATH, "utf8");
-  return baseHtml;
-}
-
-function injectOg(html, base, title, desc, imgPath) {
-  const absImg = imgPath.startsWith("http") ? imgPath : `${base}${imgPath}`;
-  return html
-    .replace(/(<meta property="og:title" content=")[^"]*(")/,   `$1${title}$2`)
-    .replace(/(<meta property="og:description" content=")[^"]*(")/,`$1${desc}$2`)
-    .replace(/(<meta property="og:image" content=")[^"]*(")/g,  `$1${absImg}$2`)
-    .replace(/(<meta name="twitter:title" content=")[^"]*(")/,   `$1${title}$2`)
-    .replace(/(<meta name="twitter:description" content=")[^"]*(")/,`$1${desc}$2`)
-    .replace(/(<meta name="twitter:image" content=")[^"]*(")/g,  `$1${absImg}$2`)
-    .replace(/(<meta name="description" content=")[^"]*(")/,     `$1${desc}$2`)
-    .replace(/(<title>)[^<]*(<\/title>)/,                        `$1${title}$2`);
-}
+const botHeaders = {
+  Authorization: `Bot ${BOT_TOKEN}`,
+  "Content-Type": "application/json",
+};
 
 app.use(express.json());
-app.use(express.static(__dirname, { index: false }));
+app.use(express.static(path.join(__dirname)));
 
-// Serve HTML with server-injected absolute OG tags
-app.get("/", (req, res) => {
-  const proto = req.headers["x-forwarded-proto"] || req.protocol;
-  const base = `${proto}://${req.headers.host}`;
-  const capeId = parseInt(req.query.cape, 10);
-  const cape = capeId ? CAPES.find((c) => c.id === capeId) : null;
+// ── In-Memory Rate Limiting ────────────────────────────────────────────────────
+// Simple in-memory tracker per IP / simple identifier to prevent spam
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60000 * 5; // 5 minutes
+const MAX_REQUESTS = 3;
 
-  let html = getHtml();
-  if (cape) {
-    html = injectOg(
-      html, base,
-      `${cape.name} Cape — $${cape.price} | €UFMC`,
-      `Get the ${cape.name} Minecraft cape for $${cape.price}. Delivered within 24 hours via a private Discord ticket.`,
-      `/cape-${cape.id}.png`
-    );
-  } else {
-    html = injectOg(
-      html, base,
-      "€UFMC | Minecraft Capes",
-      "Premium Minecraft capes at unbeatable prices. Delivered within 24 hours — simple, secure, and seamless.",
-      "/logo.png"
-    );
+function isRateLimited(req) {
+  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown_ip";
+  const now = Date.now();
+  let tracker = rateLimitMap.get(ip);
+
+  if (!tracker) {
+    tracker = { count: 1, firstRequest: now };
+    rateLimitMap.set(ip, tracker);
+    return false;
   }
 
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.send(html);
-});
+  // Reset the window if enough time has passed
+  if (now - tracker.firstRequest > RATE_LIMIT_WINDOW_MS) {
+    tracker.count = 1;
+    tracker.firstRequest = now;
+    return false;
+  }
+
+  tracker.count += 1;
+  return tracker.count > MAX_REQUESTS;
+}
+
+// Optional Discord Role restriction logic (placeholder for user configurability)
+// If you want only members with a specific role to be able to order, verify it here.
+const ALLOWED_ROLE_ID = process.env.DISCORD_ALLOWED_ROLE_ID || null; // Optional
+
+// ── Sanitize functions ───────────────────────────────────────────────────────
+function safeText(str) {
+  if (!str) return "";
+  return String(str).replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 100);
+}
+
+// ── Logging to file (simulating a basic DB/log for audit purposes) ─────────────
+function appendToAuditLog(order) {
+  const logLine = `[${new Date().toISOString()}] Username: ${order.username} | OptUsername: ${order.optUsername} | Item: ${order.item} | Price: $${order.price} | DiscordTicket: ${order.ticketChannel || "N/A"}\n`;
+  try {
+    fs.appendFileSync(path.join(__dirname, "orders.log"), logLine);
+  } catch (err) {
+    console.error("Failed writing to audit log:", err);
+  }
+}
 
 // ── Discord helpers ────────────────────────────────────────────────────────────
 async function findMember(rawUsername) {
@@ -200,32 +195,44 @@ app.get("/api/validate-user", async (req, res) => {
   
   if (!hasDiscordConfig) {
     // Direct simulated validation in preview mode
-    return res.json({ found: true, userId: "1234567890", note: "Simulated in preview mode" });
+    return res.json({ valid: true, userId: "1234567890", note: "Simulated in preview mode" });
   }
 
   try {
     const member = await findMember(username);
-    if (!member) return res.status(404).json({ found: false });
-    res.json({ found: true, userId: member.user.id });
+    if (!member) return res.status(404).json({ valid: false });
+    res.json({ valid: true, userId: member.user.id });
   } catch (err) {
     console.error("validate-user:", err);
-    res.status(500).json({ error: "Internal error" });
+    res.status(500).json({ valid: false, error: "Internal error" });
   }
 });
 
-app.post("/api/order", async (req, res) => {
-  const { discordUsername, capeName, price, capeAccent } = req.body;
-  if (!discordUsername || !capeName || price == null)
-    return res.status(400).json({ error: "discordUsername, capeName, price are required" });
+app.post("/api/checkout", async (req, res) => {
+  if (isRateLimited(req)) {
+    return res.status(429).json({ error: "Too many valid requests. Please wait a few minutes." });
+  }
 
+  const { item, username, optUsername, price } = req.body;
+  if (!item || !username || !price) {
+    return res.status(400).json({ error: "Missing required order information." });
+  }
+
+  const discordUsername = safeText(username);
+  const optionalExtra = safeText(optUsername);
+
+  // If we lack config, just fake a success sequence (perfect for preview mode).
   if (!hasDiscordConfig) {
-    // Direct simulated order in preview mode
-    console.log(`[SIMULATED ORDER] User: ${discordUsername}, Cape: ${capeName}, Price: $${price}`);
-    return res.json({ 
-      guildId: "1234567890", 
-      channelId: "1234567890",
-      simulated: true,
-      message: "Order simulation successful" 
+    console.log(`[PREVIEW MODE] Order received: ${item} for ${discordUsername} ($${price})`);
+    if (optionalExtra) console.log(`[PREVIEW MODE] Optional Extra Info: ${optionalExtra}`);
+    
+    // Simulate successful order logs
+    appendToAuditLog({ username: discordUsername, optUsername: optionalExtra, item, price, ticketChannel: "#mock-ticket-channel" });
+    
+    return res.json({
+      success: true,
+      ticketUrl: "https://discord.com/app",
+      message: "Simulated checkout successful. (No real webhook fired)."
     });
   }
 
@@ -235,51 +242,92 @@ app.post("/api/order", async (req, res) => {
 
     const userId = member.user.id;
     const safeUser = discordUsername.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18) || "user";
-    const safeCape = capeName.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18);
+    // Construct ticket channel string: ticket-username-item
+    const cleanItemName = item.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 15);
+    const channelName = `ticket-${safeUser}-${cleanItemName}`;
 
-    const channelBody = {
-      name: `ticket-${safeCape}-${safeUser}`,
-      type: 0,
-      topic: `Order: ${capeName} | $${price} USD | ${discordUsername}`,
+    // 1. Create a channel for this order
+    const createPayload = {
+      name: channelName,
+      type: 0, // Guild Text
+      topic: `Order ticket for ${discordUsername}. User ID: ${userId}`,
       permission_overwrites: [
-        { id: GUILD_ID, type: 0, deny: "1024" },
-        { id: userId, type: 1, allow: "52224" },
+        {
+          id: GUILD_ID,
+          type: 0,
+          deny: "1024", // View channel
+        },
+        {
+          id: userId,
+          type: 1, // User
+          allow: "3072", // View channel + Send Messages
+        },
       ],
     };
-    if (CATEGORY_ID) channelBody.parent_id = CATEGORY_ID;
+
+    if (CATEGORY_ID) {
+      createPayload.parent_id = CATEGORY_ID;
+    }
 
     const chanRes = await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/channels`, {
-      method: "POST", headers: botHeaders, body: JSON.stringify(channelBody),
+      method: "POST",
+      headers: botHeaders,
+      body: JSON.stringify(createPayload),
     });
+
     if (!chanRes.ok) {
-      console.error("Channel error:", await chanRes.json().catch(() => ({})));
-      return res.status(500).json({ error: "Failed to create ticket channel" });
+      const errTxt = await chanRes.text();
+      console.error("[DISCORD] Failed to create channel:", errTxt);
+      return res.status(500).json({ error: "Failed to create Discord ticket." });
     }
-    const channel = await chanRes.json();
 
-    const color = capeAccent ? parseInt(capeAccent.replace("#", ""), 16) : 0x5865f2;
-    await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
-      method: "POST", headers: botHeaders,
-      body: JSON.stringify({
-        content: `<@${userId}> Your purchase request has been received! Our team will be with you shortly.`,
-        embeds: [{
-          title: `🛒 Order: ${capeName}`, color,
+    const channel = await chanRes.json();
+    const ticketUrl = `https://discord.com/channels/${GUILD_ID}/${channel.id}`;
+
+    // Log internally
+    appendToAuditLog({ username: discordUsername, optUsername: optionalExtra, item, price, ticketChannel: channelName });
+
+    // 2. Post the introductory embed into the newly created channel
+    const msgPayload = {
+      content: `<@${userId}> Welcome to your secure purchasing ticket! 🎫`,
+      embeds: [
+        {
+          title: "New Order Request",
+          color: 0x5865f2,
           fields: [
-            { name: "Cape",     value: capeName,        inline: true },
-            { name: "Price",    value: `$${price} USD`, inline: true },
-            { name: "Customer", value: `<@${userId}>`,  inline: true },
+            { name: "Product", value: item, inline: true },
+            { name: "Price", value: `$${price}`, inline: true },
+            { name: "Buyer Context / Additional Info", value: optionalExtra || "None provided", inline: false },
           ],
-          footer: { text: "€UFMC Cape Shop • Not affiliated with Mojang AB or Microsoft" },
+          description: "Our support and sales team has been notified. Please wait here, and a staff member will assist you shortly with the payment process.\n\n_Do not share passwords or sensitive credentials here._",
           timestamp: new Date().toISOString(),
-        }],
-      }),
+          footer: { text: "Secure Order Fulfillment" }
+        },
+      ],
+    };
+
+    const msgRes = await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: botHeaders,
+      body: JSON.stringify(msgPayload),
     });
 
-    res.json({ guildId: GUILD_ID, channelId: channel.id });
+    if (!msgRes.ok) {
+      console.warn("[DISCORD] Failed to send initialization embed to ticket:", await msgRes.text());
+      // We still return success because the channel was created successfully
+    }
+
+    res.json({ success: true, ticketUrl });
   } catch (err) {
-    console.error("order:", err);
-    res.status(500).json({ error: "Internal error" });
+    console.error("Checkout route error:", err);
+    res.status(500).json({ error: "An internal server error occurred." });
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => console.log(`€UFMC shop → http://0.0.0.0:${PORT}`));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server listening on port ${PORT}`);
+});
