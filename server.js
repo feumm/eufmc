@@ -157,7 +157,6 @@ app.post("/api/order", async (req, res) => {
         { name: "Pay with Litecoin", value: `\`${LTC_ADDRESS}\``,       inline: false },
       ],
       thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
-      footer: { text: "€UFMC Cape Shop" },
       timestamp: new Date().toISOString(),
     };
 
