@@ -1,4 +1,8 @@
-require("dotenv").config();
+try {
+  require("dotenv").config();
+} catch (e) {
+  // Ignore if dotenv is not installed (e.g. on Railway/Replit where env vars are native)
+}
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
