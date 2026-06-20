@@ -10,7 +10,7 @@ const GUILD_ID = process.env.DISCORD_GUILD_ID;
 const CATEGORY_ID = process.env.DISCORD_CATEGORY_ID;
 
 if (!BOT_TOKEN || !GUILD_ID) {
-  console.error("ERROR: DISCORD_BOT_TOKEN and DISCORD_GUILD_ID must be set.");
+  console.error("ERROR: DISCORD_BOT_TOKEN and DISCORD_GUILD_ID must be set in .env");
   process.exit(1);
 }
 
@@ -36,20 +36,19 @@ function getHtml() {
 function injectOg(html, base, title, desc, imgPath) {
   const absImg = imgPath.startsWith("http") ? imgPath : `${base}${imgPath}`;
   return html
-    .replace(/(<meta property="og:title" content=")[^"]*(")/,   `$1${title}$2`)
+    .replace(/(<meta property="og:title" content=")[^"]*(")/,    `$1${title}$2`)
     .replace(/(<meta property="og:description" content=")[^"]*(")/,`$1${desc}$2`)
-    .replace(/(<meta property="og:image" content=")[^"]*(")/g,  `$1${absImg}$2`)
-    .replace(/(<meta name="twitter:title" content=")[^"]*(")/,   `$1${title}$2`)
+    .replace(/(<meta property="og:image" content=")[^"]*(")/g,   `$1${absImg}$2`)
+    .replace(/(<meta name="twitter:title" content=")[^"]*(")/,    `$1${title}$2`)
     .replace(/(<meta name="twitter:description" content=")[^"]*(")/,`$1${desc}$2`)
     .replace(/(<meta name="twitter:image" content=")[^"]*(")/g,  `$1${absImg}$2`)
-    .replace(/(<meta name="description" content=")[^"]*(")/,     `$1${desc}$2`)
-    .replace(/(<title>)[^<]*(<\/title>)/,                        `$1${title}$2`);
+    .replace(/(<meta name="description" content=")[^"]*(")/,      `$1${desc}$2`)
+    .replace(/(<title>)[^<]*(<\/title>)/,                         `$1${title}$2`);
 }
 
 app.use(express.json());
 app.use(express.static(__dirname, { index: false }));
 
-// Serve HTML with server-injected absolute OG tags
 app.get("/", (req, res) => {
   const proto = req.headers["x-forwarded-proto"] || req.protocol;
   const base = `${proto}://${req.headers.host}`;
@@ -58,15 +57,13 @@ app.get("/", (req, res) => {
 
   let html = getHtml();
   if (cape) {
-    html = injectOg(
-      html, base,
+    html = injectOg(html, base,
       `${cape.name} Cape — $${cape.price} | €UFMC`,
       `Get the ${cape.name} Minecraft cape for $${cape.price}. Delivered within 24 hours via a private Discord ticket.`,
       `/cape-${cape.id}.png`
     );
   } else {
-    html = injectOg(
-      html, base,
+    html = injectOg(html, base,
       "€UFMC | Minecraft Capes",
       "Premium Minecraft capes at unbeatable prices. Delivered within 24 hours — simple, secure, and seamless.",
       "/logo.png"
@@ -77,7 +74,6 @@ app.get("/", (req, res) => {
   res.send(html);
 });
 
-// ── Discord helpers ────────────────────────────────────────────────────────────
 async function findMember(rawUsername) {
   const clean = rawUsername.split("#")[0].trim().toLowerCase();
   const res = await fetch(
@@ -96,14 +92,13 @@ async function findMember(rawUsername) {
   );
 }
 
-// ── API routes ─────────────────────────────────────────────────────────────────
 app.get("/api/validate-user", async (req, res) => {
   const username = (req.query.username || "").trim();
   if (!username) return res.status(400).json({ error: "username required" });
   try {
     const member = await findMember(username);
-    if (!member) return res.status(404).json({ found: false });
-    res.json({ found: true, userId: member.user.id });
+    if (!member) return res.status(404).json({ valid: false });
+    res.json({ valid: true, userId: member.user.id });
   } catch (err) {
     console.error("validate-user:", err);
     res.status(500).json({ error: "Internal error" });
