@@ -149,20 +149,15 @@ app.post("/api/order", async (req, res) => {
     const LTC_ADDRESS = "ltc1qw7t79qc646uxzxq8xnrw46g4mj7d2hfu87cxxj";
 
     const embed = {
-      title: `${capeName} Cape`,
-      description: `A new purchase request has been opened. Send payment to the Litecoin address below and our team will deliver your cape within 24 hours.`,
       color,
       fields: [
-        { name: "🎭  Cape",     value: `**${capeName}**`,                           inline: true },
-        { name: "💰  Price",    value: `**$${Number(price).toLocaleString()} USD**`, inline: true },
-        { name: "👤  Customer", value: `<@${userId}>`,                               inline: true },
-        { name: "🪙  Litecoin (LTC) Address", value: `\`\`\`${LTC_ADDRESS}\`\`\``,  inline: false },
+        { name: "Cape",     value: capeName,                            inline: true },
+        { name: "Price",   value: `$${Number(price).toLocaleString()}`, inline: true },
+        { name: "Buyer",   value: `<@${userId}>`,                       inline: true },
+        { name: "Pay with Litecoin", value: `\`${LTC_ADDRESS}\``,       inline: false },
       ],
       thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
-      footer: {
-        text: "€UFMC Cape Shop  •  Not affiliated with Mojang AB or Microsoft",
-        icon_url: `${base}/logo.png`,
-      },
+      footer: { text: "€UFMC Cape Shop" },
       timestamp: new Date().toISOString(),
     };
 
@@ -171,7 +166,7 @@ app.post("/api/order", async (req, res) => {
     await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
       method: "POST", headers: botHeaders,
       body: JSON.stringify({
-        content: `<@${userId}> 👋 Your purchase request has been received! Our team will be with you shortly.`,
+        content: `<@${userId}> New order — send payment to the address below and we'll deliver within 24 h.`,
         embeds: [embed],
       }),
     });
