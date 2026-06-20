@@ -46,7 +46,7 @@ function injectOg(html, base, title, desc, imgPath) {
     .replace(/(<title>)[^<]*(<\/title>)/,                         `$1${title}$2`);
 }
 
-app.use(express.json());
+app.use(express.json({ limit: "50kb" }));
 app.use(express.static(__dirname, { index: false }));
 
 app.get("/", (req, res) => {
@@ -106,9 +106,10 @@ app.get("/api/validate-user", async (req, res) => {
 });
 
 app.post("/api/order", async (req, res) => {
-  const { discordUsername, capeName, price, capeAccent } = req.body;
+  const { discordUsername, capeId, capeName, price, capeAccent } = req.body;
   if (!discordUsername || !capeName || price == null)
     return res.status(400).json({ error: "discordUsername, capeName, price are required" });
+
   try {
     const member = await findMember(discordUsername);
     if (!member) return res.status(403).json({ error: "User not found in Discord server" });
@@ -137,21 +138,42 @@ app.post("/api/order", async (req, res) => {
     }
     const channel = await chanRes.json();
 
+    // Build public base URL to link the cape image
+    const proto = req.headers["x-forwarded-proto"] || req.protocol;
+    const base = `${proto}://${req.headers.host}`;
+    const resolvedId = capeId || (CAPES.find(c => c.name === capeName) || {}).id;
+    const capeImageUrl = resolvedId ? `${base}/cape-${resolvedId}.png` : null;
+
     const color = capeAccent ? parseInt(capeAccent.replace("#", ""), 16) : 0x5865f2;
+
+    const embed = {
+      title: `${capeName} Cape`,
+      description: `A new purchase request has been opened. Our team will reach out shortly to complete the transaction.`,
+      color,
+      fields: [
+        { name: "🎭  Cape",     value: `**${capeName}**`,                          inline: true },
+        { name: "💰  Price",    value: `**$${Number(price).toLocaleString()} USD**`, inline: true },
+        { name: "👤  Customer", value: `<@${userId}>`,                              inline: true },
+        { name: "📋  Status",   value: "⏳  Awaiting payment",                      inline: false },
+      ],
+      thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
+      image: capeImageUrl ? { url: capeImageUrl } : undefined,
+      footer: {
+        text: "€UFMC Cape Shop  •  Not affiliated with Mojang AB or Microsoft",
+        icon_url: `${base}/logo.png`,
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    // Remove undefined keys so Discord doesn't reject them
+    if (!embed.thumbnail) delete embed.thumbnail;
+    if (!embed.image) delete embed.image;
+
     await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
       method: "POST", headers: botHeaders,
       body: JSON.stringify({
-        content: `<@${userId}> Your purchase request has been received! Our team will be with you shortly.`,
-        embeds: [{
-          title: `🛒 Order: ${capeName}`, color,
-          fields: [
-            { name: "Cape",     value: capeName,        inline: true },
-            { name: "Price",    value: `$${price} USD`, inline: true },
-            { name: "Customer", value: `<@${userId}>`,  inline: true },
-          ],
-          footer: { text: "€UFMC Cape Shop • Not affiliated with Mojang AB or Microsoft" },
-          timestamp: new Date().toISOString(),
-        }],
+        content: `<@${userId}> 👋 Your purchase request has been received! Our team will be with you shortly.`,
+        embeds: [embed],
       }),
     });
 
