@@ -19,173 +19,104 @@ const CATEGORY_ID = cleanEnvVar(process.env.DISCORD_CATEGORY_ID);
 
 const hasDiscordConfig = !!(BOT_TOKEN && GUILD_ID);
 if (!hasDiscordConfig) {
-  console.warn("\n⚠️ WARNING: DISCORD_BOT_TOKEN or DISCORD_GUILD_ID is not set in the environment.");
-  console.warn("The server will run in PREVIEW MODE. Simulated orders will be logged to the console.\n");
+  console.warn("⚠️ DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set! App will run in preview/mock mode.");
 }
-
-// Global Headers for Discord API
-const DISCORD_API = "https://discord.com/api/v10";
-const botHeaders = {
-  Authorization: `Bot ${BOT_TOKEN}`,
-  "Content-Type": "application/json",
-};
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname)));
 
-// ── In-Memory Rate Limiting ────────────────────────────────────────────────────
-// Simple in-memory tracker per IP / simple identifier to prevent spam
-const rateLimitMap = new Map();
-const RATE_LIMIT_WINDOW_MS = 60000 * 5; // 5 minutes
-const MAX_REQUESTS = 3;
-
-function isRateLimited(req) {
-  const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown_ip";
-  const now = Date.now();
-  let tracker = rateLimitMap.get(ip);
-
-  if (!tracker) {
-    tracker = { count: 1, firstRequest: now };
-    rateLimitMap.set(ip, tracker);
-    return false;
-  }
-
-  // Reset the window if enough time has passed
-  if (now - tracker.firstRequest > RATE_LIMIT_WINDOW_MS) {
-    tracker.count = 1;
-    tracker.firstRequest = now;
-    return false;
-  }
-
-  tracker.count += 1;
-  return tracker.count > MAX_REQUESTS;
+// ── Static Files & SPA fallback ────────────────────────────────────────────────
+// Try to serve Vite build output if it exists (for deployment)
+const distPath = path.join(process.cwd(), "dist");
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get("/", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+} else {
+  // Otherwise serve current root (development fallback)
+  app.use(express.static(process.cwd()));
+  app.get("/", (req, res) => res.sendFile(path.join(process.cwd(), "index.html")));
 }
 
-// Optional Discord Role restriction logic (placeholder for user configurability)
-// If you want only members with a specific role to be able to order, verify it here.
-const ALLOWED_ROLE_ID = process.env.DISCORD_ALLOWED_ROLE_ID || null; // Optional
 
-// ── Sanitize functions ───────────────────────────────────────────────────────
-function safeText(str) {
-  if (!str) return "";
-  return String(str).replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim().slice(0, 100);
-}
+// ── Helper: Discord API Request ────────────────────────────────────────────────
+/**
+ * Call Discord REST API
+ */
+async function discordRequest(endpoint, options = {}) {
+  const url = `https://discord.com/api/v10${endpoint}`;
+  
+  const headers = {
+    "Authorization": `Bot ${BOT_TOKEN}`,
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
 
-// ── Logging to file (simulating a basic DB/log for audit purposes) ─────────────
-function appendToAuditLog(order) {
-  const logLine = `[${new Date().toISOString()}] Username: ${order.username} | OptUsername: ${order.optUsername} | Item: ${order.item} | Price: $${order.price} | DiscordTicket: ${order.ticketChannel || "N/A"}\n`;
-  try {
-    fs.appendFileSync(path.join(__dirname, "orders.log"), logLine);
-  } catch (err) {
-    console.error("Failed writing to audit log:", err);
-  }
-}
-
-// ── Discord helpers ────────────────────────────────────────────────────────────
-async function findMember(rawUsername) {
-  const clean = rawUsername.split("#")[0].trim().toLowerCase();
-  console.log(`[DISCORD] Searching for member "${clean}" in Guild ${GUILD_ID}...`);
-
-  // Strategy 1: If clean is a Discord User ID, look it up directly
-  if (/^\d{17,20}$/.test(clean)) {
-    console.log(`[DISCORD] Input looks like a Discord User ID. Fetching user directly: ${clean}`);
-    try {
-      const res = await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/members/${clean}`, { headers: botHeaders });
-      if (res.ok) {
-        const member = await res.json();
-        console.log(`[DISCORD SUCCESS] Found member directly by User ID: "${member.user.username}"`);
-        return member;
-      }
-    } catch (e) {
-      console.error(`[DISCORD ERROR] Failed direct ID lookup:`, e.message);
-    }
-  }
-
-  // Strategy 2: Call the search endpoint
-  let searchMembers = [];
-  try {
-    const res = await fetch(
-      `${DISCORD_API}/guilds/${GUILD_ID}/members/search?query=${encodeURIComponent(clean)}&limit=10`,
-      { headers: botHeaders }
-    );
-    if (res.ok) {
-      searchMembers = await res.json();
-      console.log(`[DISCORD] /members/search returned ${searchMembers.length} result(s).`);
-    } else {
-      const errMsg = await res.text().catch(() => "Unknown error");
-      console.error(`[DISCORD WARNING] Search endpoint returned status ${res.status}:`, errMsg);
-    }
-  } catch (e) {
-    console.error(`[DISCORD ERROR] Failed to query search endpoint:`, e.message);
-  }
-
-  // Match search results
-  let found = searchMembers.find((m) => {
-    const uLow = m.user.username.toLowerCase();
-    const tag = m.user.discriminator && m.user.discriminator !== "0"
-      ? `${m.user.username}#${m.user.discriminator}`.toLowerCase() : null;
-    const nickLow = m.nick ? m.nick.toLowerCase() : null;
-    const dispLow = m.user.global_name ? m.user.global_name.toLowerCase() : null;
-    
-    return uLow === clean || 
-           (tag && tag === rawUsername.trim().toLowerCase()) ||
-           nickLow === clean ||
-           dispLow === clean;
+  const res = await fetch(url, {
+    ...options,
+    headers
   });
 
-  if (found) {
-    console.log(`[DISCORD SUCCESS] Found matching user in search results: "${found.user.username}"`);
-    return found;
+  if (!res.ok) {
+    const errorData = await res.text();
+    console.error(`[Discord API Error] ${res.status} ${res.statusText} at ${endpoint}`);
+    console.error(`Response auth prefix used: Bot ${BOT_TOKEN.substring(0,5)}...`);
+    console.error(`Error details:`, errorData);
+    throw new Error(`Discord API Error: ${res.status} ${res.statusText}`);
   }
 
-  // Strategy 3: Direct list-guild-members fallback (bypasses Discord index limitations)
-  console.log(`[DISCORD] No direct match from search endpoint. Fetching direct member list fallback...`);
+  // Handle 204 No Content
+  if (res.status === 204) return null;
+  return await res.json();
+}
+
+// ── Helper: Search exact member by username ────────────────────────────────────
+/**
+ * Scans the guild for a member whose standard or global username exactly matches.
+ * Note: For very large guilds, `limit: 1000` is the max per request. 
+ * If your guild is >1000, you need an exact query or pagination. Let's use the query param.
+ */
+async function findMember(username) {
+  if (!username) return null;
+  const q = username.toLowerCase().trim();
+  
   try {
-    const res = await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/members?limit=1000`, { headers: botHeaders });
-    if (res.ok) {
-      const allMembers = await res.json();
-      console.log(`[DISCORD] Successfully listed ${allMembers.length} member(s) from guild.`);
+    // Search members by query
+    const results = await discordRequest(`/guilds/${GUILD_ID}/members/search?query=${encodeURIComponent(q)}&limit=100`);
+    if (!results || !Array.isArray(results)) return null;
+
+    // Filter to exact match
+    const found = results.find(m => {
+      // modern discord usernames are in user.username, sometimes user.global_name
+      // legacy discord used user.username#discriminator (discriminator === "0" now usually)
+      const u = m.user;
+      if (!u) return false;
       
-      // Look for an exact match first
-      found = allMembers.find((m) => {
-        const uLow = m.user.username.toLowerCase();
-        const nickLow = m.nick ? m.nick.toLowerCase() : null;
-        const dispLow = m.user.global_name ? m.user.global_name.toLowerCase() : null;
-        return uLow === clean || nickLow === clean || dispLow === clean;
-      });
+      const pUsername = (u.username || "").toLowerCase();
+      const pGlobal = (u.global_name || "").toLowerCase();
+      
+      // Some users might type "username#0" or just "username"
+      return pUsername === q || pGlobal === q || `${pUsername}#${u.discriminator}` === q;
+    });
 
-      // If no exact match, try looser substring matching (fuzzy username/nick containing the query)
-      if (!found) {
-        found = allMembers.find((m) => {
-          const uLow = m.user.username.toLowerCase();
-          const nickLow = m.nick ? m.nick.toLowerCase() : null;
-          const dispLow = m.user.global_name ? m.user.global_name.toLowerCase() : null;
-          return uLow.includes(clean) || 
-                 (nickLow && nickLow.includes(clean)) || 
-                 (dispLow && dispLow.includes(dispLow));
-        });
-      }
-    } else {
-      const errMsg = await res.text().catch(() => "Unknown error");
-      console.error(`[DISCORD WARNING] Failed listing members. Status ${res.status}:`, errMsg);
-    }
+    return found;
   } catch (e) {
-    console.error(`[DISCORD ERROR] Failed listing members:`, e.message);
+    console.error("Error finding member:", e);
+    return null;
   }
+}
 
-  if (found) {
-    console.log(`[DISCORD SUCCESS] Found matching user via fallback member list: "${found.user.username}" (ID: ${found.user.id})`);
-  } else {
-    // If still not found, try the first search result if any existed as a last-resort best-guess
-    if (searchMembers.length > 0) {
-      found = searchMembers[0];
-      console.log(`[DISCORD WARNING] No resilient match succeeded. Defaulting to first search result: "${found.user.username}"`);
-    } else {
-      console.warn(`[DISCORD FAILED] Resilient lookup failed. "${rawUsername}" is truly not found or bot cannot see them.`);
-    }
+// ── Helper: Auto-Find "Tickets" Category if config missing ────────────────────
+async function ensureCategoryId() {
+  if (CATEGORY_ID) return CATEGORY_ID;
+  
+  try {
+    const channels = await discordRequest(`/guilds/${GUILD_ID}/channels`);
+    // Find a category channel containing "ticket"
+    const cat = channels.find(c => c.type === 4 && c.name.toLowerCase().includes("ticket"));
+    if (cat) return cat.id;
+  } catch(e) {
+    console.error("Could not fetch categories:", e);
   }
-
-  return found;
+  return null;
 }
 
 // ── API routes ─────────────────────────────────────────────────────────────────
@@ -208,31 +139,19 @@ app.get("/api/validate-user", async (req, res) => {
   }
 });
 
-app.post("/api/checkout", async (req, res) => {
-  if (isRateLimited(req)) {
-    return res.status(429).json({ error: "Too many valid requests. Please wait a few minutes." });
+app.post("/api/order", async (req, res) => {
+  const { discordUsername, packageName, price, duration, paymentMethod } = req.body;
+
+  if (!discordUsername || !packageName || !price) {
+    return res.status(400).json({ error: "Missing required order fields" });
   }
 
-  const { item, username, optUsername, price } = req.body;
-  if (!item || !username || !price) {
-    return res.status(400).json({ error: "Missing required order information." });
-  }
-
-  const discordUsername = safeText(username);
-  const optionalExtra = safeText(optUsername);
-
-  // If we lack config, just fake a success sequence (perfect for preview mode).
   if (!hasDiscordConfig) {
-    console.log(`[PREVIEW MODE] Order received: ${item} for ${discordUsername} ($${price})`);
-    if (optionalExtra) console.log(`[PREVIEW MODE] Optional Extra Info: ${optionalExtra}`);
-    
-    // Simulate successful order logs
-    appendToAuditLog({ username: discordUsername, optUsername: optionalExtra, item, price, ticketChannel: "#mock-ticket-channel" });
-    
+    console.log("Mock Order Created:", req.body);
     return res.json({
       success: true,
-      ticketUrl: "https://discord.com/app",
-      message: "Simulated checkout successful. (No real webhook fired)."
+      ticketUrl: "https://discord.com/channels/mock_server/mock_channel",
+      note: "Simulated preview response"
     });
   }
 
@@ -242,92 +161,91 @@ app.post("/api/checkout", async (req, res) => {
 
     const userId = member.user.id;
     const safeUser = discordUsername.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18) || "user";
-    // Construct ticket channel string: ticket-username-item
-    const cleanItemName = item.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 15);
-    const channelName = `ticket-${safeUser}-${cleanItemName}`;
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    const channelName = `ticket-${safeUser}-${rand}`;
+    
+    const parentId = await ensureCategoryId();
 
-    // 1. Create a channel for this order
-    const createPayload = {
+    // Channel Permission Overwrites
+    // type: 0 = role, 1 = member
+    // id: the user id or guild id (for @everyone)
+    // 1024 = VIEW_CHANNEL, 2048 = SEND_MESSAGES
+    const permissionOverwrites = [
+      {
+        id: GUILD_ID, // @everyone role is same ID as the guild
+        type: 0,
+        deny: "1024" // Deny VIEW_CHANNEL
+      },
+      {
+        id: userId,
+        type: 1,
+        allow: "3072" // Allow VIEW_CHANNEL + SEND_MESSAGES
+      }
+    ];
+
+    // Create the channel under the category
+    const channelCreatePayload = {
       name: channelName,
-      type: 0, // Guild Text
-      topic: `Order ticket for ${discordUsername}. User ID: ${userId}`,
-      permission_overwrites: [
-        {
-          id: GUILD_ID,
-          type: 0,
-          deny: "1024", // View channel
-        },
-        {
-          id: userId,
-          type: 1, // User
-          allow: "3072", // View channel + Send Messages
-        },
-      ],
+      type: 0, // GUILD_TEXT
+      parent_id: parentId, // works even if null
+      permission_overwrites: permissionOverwrites
     };
 
-    if (CATEGORY_ID) {
-      createPayload.parent_id = CATEGORY_ID;
-    }
-
-    const chanRes = await fetch(`${DISCORD_API}/guilds/${GUILD_ID}/channels`, {
+    const newChannel = await discordRequest(`/guilds/${GUILD_ID}/channels`, {
       method: "POST",
-      headers: botHeaders,
-      body: JSON.stringify(createPayload),
+      body: JSON.stringify(channelCreatePayload)
     });
 
-    if (!chanRes.ok) {
-      const errTxt = await chanRes.text();
-      console.error("[DISCORD] Failed to create channel:", errTxt);
-      return res.status(500).json({ error: "Failed to create Discord ticket." });
+    if (!newChannel || !newChannel.id) {
+      throw new Error("Discord API did not return a channel ID. " + JSON.stringify(newChannel));
     }
 
-    const channel = await chanRes.json();
-    const ticketUrl = `https://discord.com/channels/${GUILD_ID}/${channel.id}`;
+    // Prepare embedded message content
+    const embed = {
+      title: `🛍️ New Order: ${packageName}`,
+      description: `Please proceed with your payment.\n\n**Buyer:** <@${userId}>\n**Price:** $${price}\n**Package:** ${packageName}\n**Duration:** ${duration || 'Lifetime'}\n**Method:** ${paymentMethod || 'Paypal / Cashapp / Crypto'}`,
+      color: 0x5865F2, // Discord Blurple
+      footer: { text: "eufmc Shop Automated System" },
+      timestamp: new Date().toISOString()
+    };
 
-    // Log internally
-    appendToAuditLog({ username: discordUsername, optUsername: optionalExtra, item, price, ticketChannel: channelName });
-
-    // 2. Post the introductory embed into the newly created channel
     const msgPayload = {
-      content: `<@${userId}> Welcome to your secure purchasing ticket! 🎫`,
-      embeds: [
-        {
-          title: "New Order Request",
-          color: 0x5865f2,
-          fields: [
-            { name: "Product", value: item, inline: true },
-            { name: "Price", value: `$${price}`, inline: true },
-            { name: "Buyer Context / Additional Info", value: optionalExtra || "None provided", inline: false },
-          ],
-          description: "Our support and sales team has been notified. Please wait here, and a staff member will assist you shortly with the payment process.\n\n_Do not share passwords or sensitive credentials here._",
-          timestamp: new Date().toISOString(),
-          footer: { text: "Secure Order Fulfillment" }
-        },
-      ],
+      content: `<@${userId}> Welcome to your purchase ticket! Please wait for staff to assist you.`,
+      embeds: [embed]
     };
 
-    const msgRes = await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
+    // Send initial message
+    await discordRequest(`/channels/${newChannel.id}/messages`, {
       method: "POST",
-      headers: botHeaders,
-      body: JSON.stringify(msgPayload),
+      body: JSON.stringify(msgPayload)
     });
 
-    if (!msgRes.ok) {
-      console.warn("[DISCORD] Failed to send initialization embed to ticket:", await msgRes.text());
-      // We still return success because the channel was created successfully
-    }
-
+    const ticketUrl = `https://discord.com/channels/${GUILD_ID}/${newChannel.id}`;
+    
+    // Return the ticket URL to the frontend
     res.json({ success: true, ticketUrl });
+
   } catch (err) {
-    console.error("Checkout route error:", err);
-    res.status(500).json({ error: "An internal server error occurred." });
+    console.error("Order processing error:", err);
+    res.status(500).json({ error: "Failed to create order ticket", details: err.message });
   }
 });
 
+
+// Catch-all SPA route
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "index.html"));
+  if (fs.existsSync(distPath)) {
+    res.sendFile(path.join(distPath, "index.html"));
+  } else {
+    res.sendFile(path.join(process.cwd(), "index.html"));
+  }
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`🚀 Server initialized on port ${PORT}`);
+  if (hasDiscordConfig) {
+    console.log(`✅ Discord configured. Target server ID: ${GUILD_ID}`);
+  } else {
+    console.log(`⚠️ Running in local preview mode without Discord integrations.`);
+  }
 });
