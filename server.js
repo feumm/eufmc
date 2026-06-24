@@ -23,7 +23,7 @@ const CAPES = [
 
 const LTC_ADDRESS = "ltc1qw7t79qc646uxzxq8xnrw46g4mj7d2hfu87cxxj";
 
-async function findMember(rawUsername: string) {
+async function findMember(rawUsername) {
   if (!BOT_TOKEN || !GUILD_ID) return null;
   const clean = rawUsername.split("#")[0].trim().toLowerCase();
   const res = await fetch(
