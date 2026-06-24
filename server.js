@@ -76,6 +76,9 @@ router.post("/order", async (req, res) => {
     return;
   }
 
+  // ADD THIS LINE BACK IN BELOW:
+  const { discordUsername, capeId, capeName, price, capeAccent } = req.body;
+
   if (!discordUsername || !capeName || price == null) {
     res.status(400).json({ error: "discordUsername, capeName, price are required" });
     return;
