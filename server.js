@@ -18,10 +18,10 @@ const DISCORD_API = "https://discord.com/api/v10";
 const botHeaders = { Authorization: `Bot ${BOT_TOKEN}`, "Content-Type": "application/json" };
 
 const CAPES = [
-  { id: 1, name: "Minecraft Experience", accent: "#4c1d95", price: 79 },
-  { id: 2, name: "Moonlight Trial",      accent: "#3b82f6", price: 359 },
-  { id: 3, name: "Crafter",              accent: "#d97706", price: 1500 },
-  { id: 4, name: "Follower's",           accent: "#16a34a", price: 865 },
+  { id: 1, name: "Minecraft Experience", accent: "#4c1d95", price: 60 },
+  { id: 2, name: "Moonlight Trial",      accent: "#3b82f6", price: 259 },
+  { id: 3, name: "Crafter",              accent: "#d97706", price: 600 },
+  { id: 4, name: "Follower's",           accent: "#16a34a", price: 450 },
   { id: 5, name: "Purple Heart",         accent: "#a855f7", price: 20 },
   { id: 6, name: "Menace",              accent: "#ef4444", price: 10 },
 ];
