@@ -168,11 +168,6 @@ app.post("/api/order", async (req, res) => {
       ],
     
     thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
-      footer: {
-        text: `€UFMC · All sales are final · Order ${orderId}`,
-        icon_url: `${base}/logo.png`,
-      },
-      timestamp: new Date().toISOString(),
     };
     if (!embed["thumbnail"]) delete embed["thumbnail"];
     if (!embed["image"]) delete embed["image"];
