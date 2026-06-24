@@ -124,7 +124,7 @@ router.post("/order", async (req, res) => {
 
     const orderId = `#${Date.now().toString(36).toUpperCase()}`;
 
-    const embed: Record<string, unknown> = {
+    const embed = {
       author: {
         name: "€UFMC — Minecraft Cape Shop",
         icon_url: `${base}/logo.png`,
