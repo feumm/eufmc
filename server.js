@@ -92,7 +92,7 @@ router.post("/order", async (req, res) => {
     const safeUser = discordUsername.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18) || "user";
     const safeCape = capeName.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18);
 
-    const channelBody: Record<string, unknown> = {
+    const channelBody = {
       name: `ticket-${safeCape}-${safeUser}`,
       type: 0,
       topic: `Order: ${capeName} | $${price} USD | ${discordUsername}`,
