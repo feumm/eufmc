@@ -76,7 +76,7 @@ router.post("/order", async (req, res) => {
     return;
   }
 
-  // ADD THIS LINE BACK IN BELOW:
+  // PASTE IT RIGHT HERE:
   const { discordUsername, capeId, capeName, price, capeAccent } = req.body;
 
   if (!discordUsername || !capeName || price == null) {
