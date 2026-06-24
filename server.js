@@ -150,18 +150,10 @@ app.post("/api/order", async (req, res) => {
     const LTC_ADDRESS = "ltc1qw7t79qc646uxzxq8xnrw46g4mj7d2hfu87cxxj";
 
     const embed = {
-      author: {
-        name: "€UFMC — Minecraft Cape Shop",
-        icon_url: `${base}/logo.png`,
-      },
-      title: `🧥 New Order — ${capeName}`,
+      title: `New Order — ${capeName}`,
       description: `<@${userId}> opened a purchase request. Follow the steps below to complete your order.`,
       color,
       fields: [
-        { name: "Cape",  value: capeName,                              inline: true },
-        { name: "Price", value: `$${Number(price).toLocaleString()}`, inline: true },
-        { name: "Buyer", value: `<@${userId}>`,                       inline: true },
-        { name: "Pay with Litecoin", value: `\`${LTC_ADDRESS}\``,    inline: false },
         { name: "🎭  Cape",   value: `**${capeName}**`,                        inline: true },
         { name: "💰  Price",  value: `**$${Number(price).toLocaleString()} USD**`, inline: true },
         { name: "🪪  Buyer",  value: `<@${userId}>`,                           inline: true },
@@ -175,6 +167,27 @@ app.post("/api/order", async (req, res) => {
         },
       ],
     };
+    thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
+      image: capeImageUrl ? { url: capeImageUrl } : undefined,
+      footer: {
+        text: `€UFMC · All sales are final · Order ${orderId}`,
+        icon_url: `${base}/logo.png`,
+      },
+      timestamp: new Date().toISOString(),
+    };
+    if (!embed["thumbnail"]) delete embed["thumbnail"];
+    if (!embed["image"]) delete embed["image"];
+    const buyerInstructions = [
+      `👋 Hey <@${userId}>, welcome to your order ticket!`,
+      ``,
+      `**Here's what to do next:**`,
+      `> **1.** Copy the Litecoin address above`,
+      `> **2.** Send exactly **$${Number(price).toLocaleString()} USD** worth of LTC to that address`,
+      `> **3.** Drop a screenshot of your transaction in this channel`,
+      `> **4.** We'll confirm and deliver your **${capeName}** cape within 24 h ✅`,
+      ``,
+      `> ⚠️ Make sure to send from a wallet you control, **not** an exchange. All sales are final.`,
+    ].join("\n");
 
     if (!embed.thumbnail) delete embed.thumbnail;
 
