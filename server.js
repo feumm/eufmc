@@ -75,7 +75,7 @@ router.post("/order", async (req, res) => {
     res.status(503).json({ error: "Discord bot not configured" });
     return;
   }
-  const { discordUsername, capeId, capeName, price, capeAccent } = req.body as {
+  const { discordUsername, capeId, capeName, price, capeAccent } = req.body; {
     discordUsername: string;
     capeId?: number;
     capeName: string;
