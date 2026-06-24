@@ -31,9 +31,7 @@ async function findMember(rawUsername) {
     { headers: botHeaders() },
   );
   if (!res.ok) return null;
-  const members = (await res.json()) as Array<{
-    user: { id: string; username: string; discriminator: string };
-  }>;
+  const members = await res.json();
   return (
     members.find((m) => {
       const uLow = m.user.username.toLowerCase();
