@@ -115,6 +115,7 @@ app.post("/api/order", async (req, res) => {
     if (!member) return res.status(403).json({ error: "User not found in Discord server" });
 
     const userId = member.user.id;
+    const orderId = "EUFMC-" + Math.floor(100000 + Math.random() * 900000);
     const safeUser = discordUsername.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18) || "user";
     const safeCape = capeName.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 18);
 
