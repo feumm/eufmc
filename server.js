@@ -165,10 +165,9 @@ app.post("/api/order", async (req, res) => {
           value: `\`\`\`\n${LTC_ADDRESS}\n\`\`\``,
           inline: false,
         },
-      ],
-    };
+      ]
+    
     thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
-      image: capeImageUrl ? { url: capeImageUrl } : undefined,
       footer: {
         text: `€UFMC · All sales are final · Order ${orderId}`,
         icon_url: `${base}/logo.png`,
