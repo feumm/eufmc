@@ -52,7 +52,7 @@ router.get("/validate-user", async (req, res) => {
     res.status(503).json({ error: "Discord bot not configured" });
     return;
   }
-  const username = (req.query["username"] as string || "").trim();
+  const username = (req.query["username"] || "").trim();
   if (!username) {
     res.status(400).json({ error: "username required" });
     return;
