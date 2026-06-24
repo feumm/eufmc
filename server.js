@@ -165,7 +165,7 @@ app.post("/api/order", async (req, res) => {
           value: `\`\`\`\n${LTC_ADDRESS}\n\`\`\``,
           inline: false,
         },
-      ]
+      ],
     
     thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
       footer: {
