@@ -149,16 +149,30 @@ app.post("/api/order", async (req, res) => {
     const LTC_ADDRESS = "ltc1qw7t79qc646uxzxq8xnrw46g4mj7d2hfu87cxxj";
 
     const embed = {
+      author: {
+        name: "€UFMC — Minecraft Cape Shop",
+        icon_url: `${base}/logo.png`,
+      },
+      title: `🧥 New Order — ${capeName}`,
+      description: `<@${userId}> opened a purchase request. Follow the steps below to complete your order.`,
       color,
       fields: [
-        { name: "Cape",     value: capeName,                            inline: true },
-        { name: "Price",   value: `$${Number(price).toLocaleString()}`, inline: true },
-        { name: "Buyer",   value: `<@${userId}>`,                       inline: true },
-        { name: "Pay with Litecoin", value: `\`${LTC_ADDRESS}\``,       inline: false },
-      ],
-      thumbnail: capeImageUrl ? { url: capeImageUrl } : undefined,
-      timestamp: new Date().toISOString(),
-    };
+        { name: "Cape",  value: capeName,                              inline: true },
+        { name: "Price", value: `$${Number(price).toLocaleString()}`, inline: true },
+        { name: "Buyer", value: `<@${userId}>`,                       inline: true },
+        { name: "Pay with Litecoin", value: `\`${LTC_ADDRESS}\``,    inline: false },
+        { name: "🎭  Cape",   value: `**${capeName}**`,                        inline: true },
+        { name: "💰  Price",  value: `**$${Number(price).toLocaleString()} USD**`, inline: true },
+        { name: "🪪  Buyer",  value: `<@${userId}>`,                           inline: true },
+        { name: "📋  Order ID", value: `\`${orderId}\``,                       inline: true },
+        { name: "⏱  Delivery", value: "Within **24 hours**",                  inline: true },
+        { name: "\u200b",     value: "\u200b",                                 inline: true },
+        {
+          name: "⛓  Pay with Litecoin (LTC)",
+          value: `\`\`\`\n${LTC_ADDRESS}\n\`\`\``,
+          inline: false,
+        },
+      };
 
     if (!embed.thumbnail) delete embed.thumbnail;
 
