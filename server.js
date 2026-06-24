@@ -192,7 +192,7 @@ app.post("/api/order", async (req, res) => {
 
     await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
       method: "POST",
-      headers: botHeaders(),
+      headers: botHeaders,
       body: JSON.stringify({
         content: `<@${userId}> New order — send payment to the address below and we'll deliver within 24 h.`,
         embeds: [embed],
@@ -201,7 +201,7 @@ app.post("/api/order", async (req, res) => {
     });
     await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
       method: "POST",
-      headers: botHeaders(),
+      headers: botHeaders,
       body: JSON.stringify({ content: buyerInstructions }),
     });
 
