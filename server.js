@@ -191,11 +191,18 @@ app.post("/api/order", async (req, res) => {
     if (!embed.thumbnail) delete embed.thumbnail;
 
     await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
-      method: "POST", headers: botHeaders,
+      method: "POST",
+      headers: botHeaders(),
       body: JSON.stringify({
         content: `<@${userId}> New order — send payment to the address below and we'll deliver within 24 h.`,
         embeds: [embed],
       }),
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+    await fetch(`${DISCORD_API}/channels/${channel.id}/messages`, {
+      method: "POST",
+      headers: botHeaders(),
+      body: JSON.stringify({ content: buyerInstructions }),
     });
 
     res.json({ guildId: GUILD_ID, channelId: channel.id });
