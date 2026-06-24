@@ -114,7 +114,7 @@ router.post("/order", async (req, res) => {
       res.status(500).json({ error: "Failed to create ticket channel" });
       return;
     }
-    const channel = (await chanRes.json()) as { id: string };
+    const channel = await chanRes.json();
 
     const proto = req.headers["x-forwarded-proto"] || req.protocol;
     const base = `${proto}://${req.headers.host}`;
